@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Rigby Infrastructure Dashboard</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.26/esri/themes/dark/main.css">
+  <script src="https://js.arcgis.com/4.26/"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    html, body, #viewDiv { height: 100%; margin: 0; padding: 0; background: #121212; }
+    #cards { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 10px; z-index: 10; }
+    .card {
+      background: #1e1e1e; color: #fff; padding: 10px 15px;
+      border-radius: 10px; box-shadow: 0 0 8px rgba(0,0,0,0.3);
+      font-family: 'Segoe UI', sans-serif; font-size: 13px;
+      cursor: pointer; transition: 0.2s;
+    }
+    .card:hover { background: #272727; transform: scale(1.05); }
+    #charts { position: absolute; top: 10px; right: 10px; width: 340px; z-index: 10; }
+    canvas { background: #1e1e1e; border-radius: 10px; margin-bottom: 12px; padding: 10px; }
+  </style>
+</head>
+<body>
+  <div id="cards"></div>
+  <div id="charts">
+    <canvas id="barChart" height="200"></canvas>
+    <canvas id="donutChart" height="200"></canvas>
+  </div>
+  <div id="viewDiv"></div>
+
+  <script>
+    require([
+      "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer"
+    ], function(Map, MapView, FeatureLayer) {
+
+      const map = new Map({ basemap: "dark-gray-vector" });
+      const view = new MapView({
+        container: "viewDiv",
+        map,
+        center: [-6.3, 53.35], // Dublin aprox.
+        zoom: 13
+      });
+
+      // --- Camadas ---
+      const pointLayer = new FeatureLayer({
+        url: "https://services3.arcgis.com/4sm59ropIKr9KMBe/arcgis/rest/services/Rigby_LPC_R00_dwg/FeatureServer/0"
+      });
+      map.add(pointLayer);
+
+      // --- Dados simulados (substituir por query real depois) ---
+      const layerStats = {
+        "01.08-Mailbox": 4,
+        "01.13-Hydrant": 12,
+        "02.20-Traffic Sign": 18,
+        "04.02-Manhole": 9,
+        "04.03-Catch Basin": 7,
+        "05-Trees": 22,
+        "06.04-Distribution Pole": 11,
+        "06.05-Transmission Pole": 5,
+        "06.06-Lighting Pole": 16,
+        "06.08-Telecommunication Tower": 3
+      };
+
+      // --- Criação dos cards ---
+      const cardsDiv = document.getElementById("cards");
+      Object.entries(layerStats).forEach(([key, val]) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `<b>${key}</b><br>${val} itens`;
+        card.onclick = () => highlightFeatures(key);
+        cardsDiv.appendChild(card);
+      });
+
+      // --- Gráfico de Barras ---
+      new Chart(document.getElementById('barChart'), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(layerStats),
+          datasets: [{
+            label: 'Contagem de Itens',
+            data: Object.values(layerStats),
+            backgroundColor: Object.keys(layerStats).map((_, i) => `hsl(${i*36},70%,50%)`)
+          }]
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: { x: { ticks: { color: '#fff' } }, y: { ticks: { color: '#fff' } } }
+        }
+      });
+
+      // --- Gráfico Donut ---
+      new Chart(document.getElementById('donutChart'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(layerStats),
+          datasets: [{
+            data: Object.values(layerStats),
+            backgroundColor: Object.keys(layerStats).map((_, i) => `hsl(${i*36},70%,50%)`)
+          }]
+        },
+        options: {
+          plugins: { legend: { position: 'bottom', labels: { color: '#fff', boxWidth: 12 } } }
+        }
+      });
+
+      // --- Função de destaque no mapa (simples) ---
+      function highlightFeatures(layerName) {
+        pointLayer.definitionExpression = `Layer = '${layerName}'`;
+        view.whenLayerView(pointLayer).then(lv => lv.filter = { where: `Layer = '${layerName}'` });
+      }
+
+    });
+  </script>
+</body>
+</html>
