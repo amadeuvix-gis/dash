@@ -1,115 +1,303 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Rigby Infrastructure Dashboard</title>
-  <link rel="stylesheet" href="https://js.arcgis.com/4.26/esri/themes/dark/main.css">
-  <script src="https://js.arcgis.com/4.26/"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rigby Dashboard — MapView (points)</title>
+
+  <!-- ArcGIS JS API (dark theme) -->
+  <link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/themes/dark/main.css">
+  <script src="https://js.arcgis.com/4.34/"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
+
   <style>
-    html, body, #viewDiv { height: 100%; margin: 0; padding: 0; background: #121212; }
-    #cards { position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 10px; z-index: 10; }
-    .card {
-      background: #1e1e1e; color: #fff; padding: 10px 15px;
-      border-radius: 10px; box-shadow: 0 0 8px rgba(0,0,0,0.3);
-      font-family: 'Segoe UI', sans-serif; font-size: 13px;
-      cursor: pointer; transition: 0.2s;
+    :root { --bg: #0b1220; --card: rgba(255,255,255,0.04); --muted:#8b98ab; --accent:#1e90ff; }
+    html,body,#viewDiv{height:100%;margin:0;padding:0;font-family:Inter, "Segoe UI", Roboto, Arial;}
+    body{background:var(--bg);color:#fff}
+    #topbar{position:absolute;top:10px;left:12px;z-index:9999;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .card{background:var(--card);padding:10px 14px;border-radius:10px;min-width:150px;box-shadow:0 6px 18px rgba(0,0,0,0.6);cursor:pointer}
+    .card .label{font-size:0.85rem;color:var(--muted)}
+    .card .value{font-size:1.25rem;font-weight:700;margin-top:6px}
+    #sidePanel{position:absolute;right:10px;top:10px;width:360px;z-index:9999;background:rgba(3,6,12,0.7);padding:12px;border-radius:8px;box-shadow:-8px 0 30px rgba(0,0,0,0.6)}
+    #sidePanel h3{color:var(--accent);margin:0 0 8px}
+    .chart-wrap{height:220px;background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;margin-bottom:10px}
+    #loader{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(2,6,23,0.6),rgba(2,6,23,0.15));z-index:1999}
+    .loader-box{background:#07101a;padding:16px;border-radius:10px;text-align:center;color:#d7eefc}
+    /* responsive */
+    @media (max-width:900px){
+      #sidePanel{width:300px}
+      .card{min-width:120px}
     }
-    .card:hover { background: #272727; transform: scale(1.05); }
-    #charts { position: absolute; top: 10px; right: 10px; width: 340px; z-index: 10; }
-    canvas { background: #1e1e1e; border-radius: 10px; margin-bottom: 12px; padding: 10px; }
   </style>
 </head>
 <body>
-  <div id="cards"></div>
-  <div id="charts">
-    <canvas id="barChart" height="200"></canvas>
-    <canvas id="donutChart" height="200"></canvas>
+  <div id="topbar" aria-hidden="true"></div>
+
+  <div id="sidePanel" role="region" aria-label="Painel lateral">
+    <h3>Dashboard Charts</h3>
+    <div id="status" style="color:var(--muted);margin-bottom:8px">Status: inicializando…</div>
+
+    <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+    <div class="chart-wrap"><canvas id="donutChart"></canvas></div>
+
+    <div style="color:var(--muted);font-size:0.85rem">
+      <div>Notas:</div>
+      <ul style="margin:6px 0 0 16px;color:var(--muted)">
+        <li>Cards mostram a contagem total por valor do campo <code>Layer</code>.</li>
+        <li>Clique num card para destacar/filtrar esse tipo no mapa.</li>
+        <li>Se houver muitas feições, algumas consultas podem demorar.</li>
+      </ul>
+    </div>
   </div>
-  <div id="viewDiv"></div>
 
-  <script>
-    require([
-      "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer"
-    ], function(Map, MapView, FeatureLayer) {
+  <div id="viewDiv" aria-hidden="false"></div>
 
-      const map = new Map({ basemap: "dark-gray-vector" });
-      const view = new MapView({
-        container: "viewDiv",
-        map,
-        center: [-6.3, 53.35], // Dublin aprox.
-        zoom: 13
+  <div id="loader"><div class="loader-box"><div style="font-weight:700">Loading dashboard…</div><div style="margin-top:8px;color:#9fbcea">Initializing map & queries</div></div></div>
+
+<script>
+  require([
+    "esri/Map","esri/views/MapView","esri/layers/FeatureLayer","esri/config",
+    "esri/tasks/support/StatisticDefinition","esri/geometry/Extent","esri/core/reactiveUtils"
+  ], function(Map, MapView, FeatureLayer, esriConfig, StatisticDefinition, Extent, reactiveUtils){
+
+    // ---- CONFIG (já com sua API key e layer URL) ----
+    esriConfig.apiKey = "AAPTxy8BH1VEsoebNVZXo8HurBa9va4CzoniMlE-sFD0B2rxSySVxg61bmkIJz2XawFY1eTuG5d_UN5z0SdGvkgMl5_nITFpFUFeF7-F4IrZIsjBC6AU-O_il4SfIvtnS7u-jFd8OjSfzyH5Ajt6J5tjSVnz-2pangLvbGGuA1FZQAeHD3ZJ_v7h7pUK3zLK1VB4ElyEZ6qZKSJ7rWoEZf2udDqEhCWAhNSEYEPeTvPEwow.AT1_PTx3VPpU";
+    const LAYER_URL = "https://services3.arcgis.com/4sm59ropIKr9KMBe/ArcGIS/rest/services/Rigby_LPC_R00_dwg/FeatureServer/1";
+    // -------------------------------------------------
+
+    // UI refs
+    const topbar = document.getElementById("topbar");
+    const statusEl = document.getElementById("status");
+    const loader = document.getElementById("loader");
+
+    function setStatus(txt){ if(statusEl) statusEl.textContent = "Status: " + txt; }
+
+    // map + view
+    const map = new Map({ basemap: "arcgis-dark-gray" });
+    const view = new MapView({
+      container: "viewDiv",
+      map,
+      center: [-6.254, 53.347], // default until we zoom to layer
+      zoom: 13
+    });
+
+    // FeatureLayer (points)
+    const fl = new FeatureLayer({
+      url: LAYER_URL,
+      outFields: ["Layer", "*"],
+      popupEnabled: true
+    });
+    map.add(fl);
+
+    // Chart holders
+    let barChart = null, donutChart = null;
+
+    // highlight handle
+    let currentHighlight = null;
+    let layerViewGlobal = null;
+
+    // detect if field "Layer" exists, otherwise fallback to first string field
+    async function detectCategoryField(layer){
+      await layer.load();
+      const fields = layer.fields || [];
+      // prefer exact "Layer"
+      const exact = fields.find(f => f.name.toLowerCase() === "layer");
+      if(exact) return exact.name;
+      // fallback to first string field not OBJECTID
+      const fstr = fields.find(f => f.type === "string" && !/objectid/i.test(f.name));
+      return fstr ? fstr.name : null;
+    }
+
+    // query counts grouped by field
+    async function queryCounts(layer, fieldName){
+      if(!fieldName) return null;
+      const q = layer.createQuery();
+      q.where = "1=1";
+      q.outFields = [fieldName];
+      q.groupByFieldsForStatistics = [fieldName];
+      q.orderByFields = [`${fieldName} ASC`];
+      // we request a small sample of features for grouping; server will include stats attributes
+      const res = await layer.queryFeatures(q);
+      const counts = {};
+      // find the stat attribute name (anything not the group field)
+      res.features.forEach(f=>{
+        const attrs = f.attributes || {};
+        // group value:
+        const groupVal = (attrs[fieldName] !== null && attrs[fieldName] !== undefined) ? String(attrs[fieldName]) : "NULL";
+        // find numeric attribute for count
+        const numKey = Object.keys(attrs).find(k => k !== fieldName && /count|COUNT|STAT|stat/i.test(k));
+        let cnt = 1;
+        if(numKey && !isNaN(Number(attrs[numKey]))) cnt = Number(attrs[numKey]);
+        else {
+          // sometimes the server uses "COUNT" or numeric alias; try other numeric attrs
+          const alt = Object.keys(attrs).find(k => k !== fieldName && typeof attrs[k] === "number");
+          if(alt) cnt = Number(attrs[alt]);
+        }
+        counts[groupVal] = (counts[groupVal] || 0) + cnt;
       });
 
-      // --- Camadas ---
-      const pointLayer = new FeatureLayer({
-        url: "https://services3.arcgis.com/4sm59ropIKr9KMBe/arcgis/rest/services/Rigby_LPC_R00_dwg/FeatureServer/0"
-      });
-      map.add(pointLayer);
+      // if result looks wrong (all ones or empty), fallback to client-side counting (only if reasonable)
+      const vals = Object.values(counts);
+      const allOnes = vals.length>0 && vals.every(v => v === 1);
+      if(allOnes || vals.length===0){
+        // fallback: fetch values and count client-side (may be heavy)
+        const q2 = layer.createQuery(); q2.where = "1=1"; q2.outFields = [fieldName]; q2.returnGeometry = false;
+        const res2 = await layer.queryFeatures(q2);
+        const counts2 = {};
+        res2.features.forEach(f=>{
+          const v = (f.attributes && f.attributes[fieldName] !== null && f.attributes[fieldName] !== undefined) ? String(f.attributes[fieldName]) : "NULL";
+          counts2[v] = (counts2[v] || 0) + 1;
+        });
+        return counts2;
+      }
+      return counts;
+    }
 
-      // --- Dados simulados (substituir por query real depois) ---
-      const layerStats = {
-        "01.08-Mailbox": 4,
-        "01.13-Hydrant": 12,
-        "02.20-Traffic Sign": 18,
-        "04.02-Manhole": 9,
-        "04.03-Catch Basin": 7,
-        "05-Trees": 22,
-        "06.04-Distribution Pole": 11,
-        "06.05-Transmission Pole": 5,
-        "06.06-Lighting Pole": 16,
-        "06.08-Telecommunication Tower": 3
-      };
+    // build UI: cards + charts
+    function buildUIFromCounts(countsObj){
+      // clear topbar
+      topbar.innerHTML = "";
+      const labels = Object.keys(countsObj || {});
+      const values = labels.map(l => countsObj[l]);
 
-      // --- Criação dos cards ---
-      const cardsDiv = document.getElementById("cards");
-      Object.entries(layerStats).forEach(([key, val]) => {
+      // create cards
+      labels.forEach(lbl => {
         const card = document.createElement("div");
         card.className = "card";
-        card.innerHTML = `<b>${key}</b><br>${val} itens`;
-        card.onclick = () => highlightFeatures(key);
-        cardsDiv.appendChild(card);
+        const labelShort = lbl.length > 28 ? lbl.slice(0,26) + "…" : lbl;
+        card.innerHTML = `<div class="label">${labelShort}</div><div class="value">${(countsObj[lbl]||0).toLocaleString()}</div>`;
+        card.title = lbl;
+        card.onclick = () => onCardClick(lbl);
+        topbar.appendChild(card);
       });
 
-      // --- Gráfico de Barras ---
-      new Chart(document.getElementById('barChart'), {
-        type: 'bar',
+      // create charts via Chart.js
+      const barCtx = document.getElementById("barChart").getContext("2d");
+      const donutCtx = document.getElementById("donutChart").getContext("2d");
+
+      if(barChart) barChart.destroy();
+      if(donutChart) donutChart.destroy();
+
+      barChart = new Chart(barCtx, {
+        type: "bar",
         data: {
-          labels: Object.keys(layerStats),
-          datasets: [{
-            label: 'Contagem de Itens',
-            data: Object.values(layerStats),
-            backgroundColor: Object.keys(layerStats).map((_, i) => `hsl(${i*36},70%,50%)`)
-          }]
+          labels,
+          datasets: [{ label: "Count", data: values, backgroundColor: labels.map((_,i) => `hsl(${i*30 % 360} 70% 55%)`) }]
         },
-        options: {
-          plugins: { legend: { display: false } },
-          scales: { x: { ticks: { color: '#fff' } }, y: { ticks: { color: '#fff' } } }
-        }
+        options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
       });
 
-      // --- Gráfico Donut ---
-      new Chart(document.getElementById('donutChart'), {
-        type: 'doughnut',
+      donutChart = new Chart(donutCtx, {
+        type: "doughnut",
         data: {
-          labels: Object.keys(layerStats),
-          datasets: [{
-            data: Object.values(layerStats),
-            backgroundColor: Object.keys(layerStats).map((_, i) => `hsl(${i*36},70%,50%)`)
-          }]
+          labels,
+          datasets: [{ data: values, backgroundColor: labels.map((_,i) => `hsl(${i*30 % 360} 70% 55%)`) }]
         },
-        options: {
-          plugins: { legend: { position: 'bottom', labels: { color: '#fff', boxWidth: 12 } } }
-        }
+        options: { responsive:true, plugins:{legend:{position:"bottom", labels:{color:"#fff"}}} }
       });
+    }
 
-      // --- Função de destaque no mapa (simples) ---
-      function highlightFeatures(layerName) {
-        pointLayer.definitionExpression = `Layer = '${layerName}'`;
-        view.whenLayerView(pointLayer).then(lv => lv.filter = { where: `Layer = '${layerName}'` });
+    // handle card click: highlight & zoom to features of that group
+    async function onCardClick(labelValue){
+      if(!layerViewGlobal) {
+        // ensure layerView exists
+        layerViewGlobal = await view.whenLayerView(fl);
       }
+      // escape single quotes
+      const safe = String(labelValue).replace(/'/g, "''");
+      const where = `Layer = '${safe}'`;
+      setStatus("filtrando: " + labelValue);
+      try{
+        // query features in view for that where (limit to objectIds)
+        const q = fl.createQuery(); q.where = where; q.returnGeometry = true; q.outFields = []; q.num = 10000;
+        const res = await fl.queryFeatures(q);
+        // remove previous highlight
+        if(currentHighlight){
+          try{ currentHighlight.remove(); }catch(e){}
+          currentHighlight = null;
+        }
+        if(res.features && res.features.length){
+          currentHighlight = layerViewGlobal.highlight(res.features);
+          // zoom to extent of returned features
+          const geoms = res.features.map(f => f.geometry);
+          try{
+            const extent = geoms.reduce((acc, g)=>{
+              if(!acc) return g.extent || g;
+              return acc.union ? acc.union(g.extent || g) : acc;
+            }, null);
+            if(res.extent){
+              view.goTo(res.extent.expand(1.2));
+            } else if(extent){
+              view.goTo(extent.expand ? extent.expand(1.2) : extent);
+            }
+          }catch(e){}
+        } else {
+          setStatus("Nenhum resultado para: " + labelValue);
+        }
+      }catch(err){
+        console.error("Erro highlight:", err);
+        setStatus("Erro ao filtrar: ver console");
+      }
+    }
 
+    // main builder
+    async function buildDashboard(){
+      try{
+        setStatus("carregando camada...");
+        await fl.load();
+
+        setStatus("detectar campo de categoria...");
+        const catField = await detectCategoryField(fl) || "Layer";
+        setStatus("campo categoria: " + catField);
+
+        setStatus("consultando contagens por categoria...");
+        const counts = await queryCounts(fl, catField);
+        if(!counts || Object.keys(counts).length===0){
+          setStatus("Nenhum agrupamento encontrado — exibindo contagem total.");
+          const total = await fl.queryFeatureCount();
+          const obj = { "Features": total };
+          buildUIFromCounts(obj);
+        } else {
+          buildUIFromCounts(counts);
+        }
+
+        // zoom para extensão da camada (se disponível)
+        setStatus("centralizando mapa na extensão da camada...");
+        try{
+          const extRes = await fl.queryExtent();
+          if(extRes && extRes.extent){
+            await view.goTo(extRes.extent.expand(1.15));
+          }
+        }catch(e){ console.warn("queryExtent falhou", e); }
+
+        setStatus("pronto");
+        // remove loader
+        if(loader) loader.remove();
+
+        // keep layerView reference for highlights
+        layerViewGlobal = await view.whenLayerView(fl);
+
+      }catch(err){
+        console.error(err);
+        setStatus("erro: " + (err && err.message ? err.message : err));
+        if(loader) loader.remove();
+      }
+    }
+
+    // start when view ready
+    view.when().then(()=> buildDashboard()).catch(err=>{
+      console.error("view error", err);
+      setStatus("erro ao iniciar view");
+      if(loader) loader.remove();
     });
-  </script>
+
+    // optional: re-run counts when extent changes (debounced) - uncomment if you want extent-limited stats
+    // reactiveUtils.when(() => view.stationary, () => { /* re-run queries if desired */ });
+
+  });
+</script>
 </body>
 </html>
+
