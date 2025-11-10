@@ -2,144 +2,246 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Rigby Site Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GeoDashboard v1.2 — Rigby Site (TransformXD)</title>
 
-<!-- Chart.js UMD first (avoids multipleDefine with Dojo) -->
+<!-- Chart.js UMD (load first to avoid Dojo multipleDefine conflict) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.3.0/dist/chart.umd.min.js"></script>
 
-<!-- ArcGIS CSS & JS -->
+<!-- ArcGIS API -->
 <link rel="stylesheet" href="https://js.arcgis.com/4.34/esri/themes/dark/main.css">
 <script src="https://js.arcgis.com/4.34/"></script>
 
 <style>
-  :root{
-    --bg:#0b0b0d;
-    --panel: rgba(18,18,18,0.95);
-    --accent:#38bdf8;
-    --muted:#9aa4ad;
-    --card-bg: rgba(255,255,255,0.04);
-    --radius:10px;
-  }
-  *{box-sizing:border-box}
-  html,body,#viewDiv{height:100%;margin:0;padding:0;font-family:"Segoe UI",Inter,Roboto,Arial,sans-serif}
-  body{background:var(--bg);color:#e6eef6}
+:root{
+  --bg:#0f1113;
+  --panel: rgba(18,18,18,0.92);
+  --card: rgba(255,255,255,0.04);
+  --accent:#38bdf8;
+  --muted:#9aa4ad;
+  --radius:12px;
+  --header-h:68px;
+}
+*{box-sizing:border-box}
+html,body,#viewDiv{height:100%;margin:0;padding:0;font-family:"Inter","Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#e6eef6}
+a{color:var(--accent)}
+/* Header + top cards */
+.header{
+  position:fixed;left:0;right:0;top:0;height:var(--header-h);display:flex;align-items:center;justify-content:space-between;padding:10px 18px;
+  background:linear-gradient(180deg, rgba(6,8,10,0.65), rgba(6,8,10,0.35));backdrop-filter:blur(6px);z-index:160;
+  box-shadow:0 10px 30px rgba(0,0,0,0.5);
+}
+.header .brand { display:flex;flex-direction:column }
+.header h1{margin:0;font-size:1.05rem}
+.header .meta{margin-top:4px;font-size:0.82rem;color:var(--muted)}
+.topcards{display:flex;gap:10px;align-items:center}
+.card{background:var(--card);padding:10px 14px;border-radius:10px;min-width:140px;box-shadow:0 8px 18px rgba(0,0,0,0.5)}
+.card .label{font-size:0.82rem;color:var(--muted)}
+.card .value{margin-top:6px;font-size:1.4rem;font-weight:700}
 
-  /* layout */
-  .container{display:flex;flex-direction:column;height:100%}
-  .topbar{display:flex;gap:12px;padding:14px;align-items:center;background:linear-gradient(180deg,rgba(0,0,0,0.12),transparent);z-index:40}
-  .card{background:var(--card-bg);padding:12px 16px;border-radius:8px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,0.6)}
-  .card .label{font-size:0.85rem;color:var(--muted)}
-  .card .value{font-size:1.5rem;font-weight:700;margin-top:8px}
+/* layout: map + side panels */
+.app {
+  display:flex;
+  flex-direction:row;
+  height:100%;
+  padding-top:var(--header-h);
+}
+.map-area{flex:1;position:relative}
+#viewDiv{position:absolute;inset:0;z-index:1;border-left:1px solid rgba(255,255,255,0.02)}
 
-  .main{display:flex;flex:1;min-height:0}
-  .mapWrap{flex:1;position:relative}
-  #viewDiv{position:absolute;inset:0;z-index:1;border-left:1px solid rgba(255,255,255,0.02)}
-  .side{width:420px;background:var(--panel);padding:14px;box-shadow:-10px 0 40px rgba(0,0,0,0.6);overflow:auto;z-index:20}
-  .side h2{margin:0 0 12px 0;color:var(--accent)}
-  .status{font-size:0.9rem;color:var(--muted);margin-bottom:12px}
-  .chartBox{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-bottom:12px}
-  .small{font-size:0.85rem;color:var(--muted)}
+/* Right panel (charts) */
+.side {
+  width:420px; max-width:40%;
+  background:var(--panel); padding:16px; box-shadow:-12px 0 48px rgba(0,0,0,0.6); overflow:auto; z-index:150;
+}
+.side h2{margin:0 0 10px 0;color:var(--accent)}
+.status{font-size:0.9rem;color:var(--muted);margin-bottom:12px}
+.chartBox{background:rgba(255,255,255,0.02);padding:10px;border-radius:10px;margin-bottom:12px}
+.legendRow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 
-  /* loader */
-  #loader{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:linear-gradient(180deg,rgba(2,6,23,0.6),rgba(2,6,23,0.25));backdrop-filter:blur(2px)}
-  .loadCard{background:rgba(8,10,12,0.96);padding:18px;border-radius:12px;text-align:center;color:#cfeeff;box-shadow:0 12px 30px rgba(0,0,0,0.6);width:320px}
-  .spin svg{animation:spin 1.2s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-  .loader-brand{font-weight:700;font-size:1.15rem;color:rgba(255,255,255,0.85);letter-spacing:1px;margin-top:8px}
+/* Detected types list (icons + labels) */
+.typeChip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.9rem}
+.typeIcon{width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
 
-  /* ensure native UI sits below header */
-  .esri-ui-top-left{ top:86px !important; z-index:150 !important }
+/* Help panel modal (right slide) */
+.helpPanel{
+  position:fixed; right:-480px; top:var(--header-h); width:420px; height:calc(100% - var(--header-h) - 32px); padding:16px; background:var(--panel); border-radius:12px 0 0 12px;
+  box-shadow:-12px 18px 60px rgba(0,0,0,0.6); transition:right .36s cubic-bezier(.2,.9,.3,1); z-index:260; overflow:auto;
+}
+.helpPanel.open{ right:18px }
+.helpPanel h3{color:var(--accent); margin-top:0 }
+.p-close{background:transparent;border:none;color:var(--muted);cursor:pointer}
 
-  @media (max-width:900px){
-    .side{width:320px}
-    .card{min-width:120px}
-  }
-  footer{position:fixed;left:16px;bottom:12px;color:var(--muted);font-size:0.85rem;z-index:60}
+/* loader */
+#loader{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.65),rgba(0,0,0,0.25));z-index:9999}
+.loadCard{width:360px;padding:18px;border-radius:12px;background:rgba(8,10,12,0.96);text-align:center;color:#d8f3ff;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
+.loader-brand{font-weight:800;font-size:1.15rem;letter-spacing:1px;color:rgba(255,255,255,0.9);margin-top:8px}
+.spin svg{animation:spin 1.1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+
+/* footer */
+.footer{position:fixed;left:18px;bottom:12px;color:var(--muted);font-size:0.85rem;z-index:160}
+
+/* small screens */
+@media (max-width:960px){
+  .side{width:320px}
+  .header .topcards{display:none}
+  .helpPanel{width:92%; right:-92%}
+  .helpPanel.open{ right:4% }
+}
 </style>
 </head>
 <body>
-<div class="container">
-
-  <!-- Topbar -->
-  <div class="topbar" role="banner" aria-label="Dashboard topbar">
-    <div style="flex:1">
-      <h1 style="margin:0;font-size:1.05rem">Rigby Site Dashboard</h1>
-      <div style="color:var(--muted);font-size:0.86rem">Map & indicators</div>
+  <!-- Header -->
+  <header class="header" role="banner">
+    <div class="brand">
+      <h1>GeoDashboard v1.2 — Rigby Site</h1>
+      <div class="meta">Interactive GIS Dashboard — TransformXD</div>
     </div>
 
-    <div class="card">
-      <div class="label">Total Points</div>
-      <div id="card-total-points" class="value">—</div>
+    <div class="topcards">
+      <div class="card"><div class="label">Total Points</div><div id="card-points" class="value">—</div></div>
+      <div class="card"><div class="label">Total Polygons</div><div id="card-polys" class="value">—</div></div>
+      <div class="card"><div class="label">Distinct Types</div><div id="card-types" class="value">—</div></div>
+      <button id="helpBtn" title="Help / About" style="margin-left:12px;padding:10px 12px;border-radius:10px;background:var(--card);border:none;cursor:pointer;color:#0b0b0b;font-weight:700">❔</button>
     </div>
-    <div class="card">
-      <div class="label">Total Polygons</div>
-      <div id="card-total-polygons" class="value">—</div>
-    </div>
-    <div class="card">
-      <div class="label">Distinct Point Types</div>
-      <div id="card-types" class="value">—</div>
-    </div>
-  </div>
+  </header>
 
-  <!-- Main area -->
-  <div class="main">
-    <div class="mapWrap">
+  <!-- App -->
+  <div class="app">
+    <div class="map-area">
       <div id="viewDiv" aria-label="map"></div>
 
       <!-- Loading overlay -->
       <div id="loader" role="status" aria-live="polite">
-        <div class="loadCard">
+        <div class="loadCard" role="status">
           <div class="spin" aria-hidden="true">
             <svg viewBox="0 0 50 50" width="48" height="48" fill="none"><circle cx="25" cy="25" r="20" stroke="rgba(56,189,248,0.12)" stroke-width="4"/><path d="M45 25a20 20 0 00-40 0" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/></svg>
           </div>
           <div class="loader-brand">TransformXD</div>
-          <div style="margin-top:8px;font-weight:600">Loading Dashboard…</div>
-          <div style="color:var(--muted);margin-top:6px;font-size:0.95rem">Initializing map & queries — please wait</div>
+          <div style="margin-top:8px;font-weight:700">Loading GeoDashboard…</div>
+          <div style="margin-top:6px;color:var(--muted)">Initializing map & queries — this may take a few seconds</div>
         </div>
       </div>
     </div>
 
     <aside class="side" role="complementary">
-      <h2>Charts & Filters</h2>
+      <h2>Charts & Detected Types</h2>
       <div id="status" class="status">Status: initializing…</div>
 
       <div class="chartBox">
-        <div style="font-weight:600;margin-bottom:8px">Points by Type (Bar)</div>
+        <div style="font-weight:600;margin-bottom:8px">Points by Type (bar)</div>
         <canvas id="barChart" width="400" height="260"></canvas>
       </div>
 
       <div class="chartBox">
-        <div style="font-weight:600;margin-bottom:8px">Polygons Area Distribution (Donut)</div>
+        <div style="font-weight:600;margin-bottom:8px">Polygon Area Distribution (donut)</div>
         <canvas id="donutChart" width="400" height="260"></canvas>
       </div>
 
-      <div style="margin-top:6px" class="small">
-        <strong>Instructions:</strong>
-        <ul style="margin:6px 0 0 18px">
-          <li>Click a bar or donut slice to filter the map to that type.</li>
-          <li>Click outside chart to clear filter.</li>
+      <div style="margin-top:6px" class="small">Detected types in Points layer (click a type to filter):</div>
+      <div id="detectedList" class="legendRow" style="margin-top:8px"></div>
+
+      <div style="margin-top:14px" class="small">
+        <strong>Notes:</strong>
+        <ul style="margin:8px 0 0 18px;color:var(--muted)">
+          <li>Data is read live from the FeatureService.</li>
+          <li>Layer field used: <code>Layer</code>. Values "zero" and null are ignored.</li>
+          <li>Click chart items to filter map; double-click the side panel to clear filter.</li>
         </ul>
       </div>
     </aside>
   </div>
-</div>
 
-<footer>© 2025 TransformXD — Developed by Luiz Amadeu Coutinho • <a href="https://transformxd.com" target="_blank" style="color:var(--accent)">transformxd.com</a></footer>
+  <!-- Help panel -->
+  <aside class="helpPanel" id="helpPanel" role="dialog" aria-hidden="true">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3>Help & About</h3>
+      <button class="p-close" id="helpClose" title="Close help" aria-label="Close help">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M6 6l12 12M6 18L18 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <p style="color:var(--muted)">This dashboard reads live features from the Rigby feature service and summarizes types in the <code>Layer</code> field. Charts are interactive and will filter the map on click.</p>
+
+    <h4 style="margin-top:12px;color:var(--accent)">Quick tips</h4>
+    <ul style="color:var(--muted);margin-top:6px">
+      <li>Use the bar chart to inspect point counts by type.</li>
+      <li>Use the donut chart to inspect area distribution for polygons.</li>
+      <li>Clear filters by double-clicking the right panel area.</li>
+    </ul>
+
+    <div style="margin-top:18px;border-top:1px dashed rgba(255,255,255,0.04);padding-top:12px;color:var(--muted);font-size:0.92rem">
+      <div><strong>GeoDashboard v1.2</strong></div>
+      <div>© 2025 TransformXD — Developed by <strong>Luiz Amadeu Coutinho</strong></div>
+      <div style="margin-top:6px"><a href="https://transformxd.com" target="_blank">transformxd.com</a></div>
+    </div>
+  </aside>
+
+  <div class="footer">© 2025 TransformXD — Developed by Luiz Amadeu Coutinho • v1.2</div>
 
 <script>
-/* ========== CONFIG ========== */
+/* =================== CONFIG =================== */
 const FEATURESERVER_BASE = "https://services3.arcgis.com/4sm59ropIKr9KMBe/arcgis/rest/services/Rigby_LPC_R00_dwg/FeatureServer";
-const POINT_LAYER_ID = 1;  // Rigby-LPC_R00-Point
-const POLY_LAYER_ID  = 3;  // Rigby-LPC_R00-Polygon
+const POINT_LAYER_ID = 1; // Rigby-LPC_R00-Point (1)
+const POLY_LAYER_ID  = 3; // Rigby-LPC_R00-Polygon (3)
 const POINT_LAYER_URL = FEATURESERVER_BASE + "/" + POINT_LAYER_ID;
 const POLY_LAYER_URL  = FEATURESERVER_BASE + "/" + POLY_LAYER_ID;
-/* ================================= */
+const LAYER_FIELD = "Layer";
+/* ============================================= */
 
+/* Icon set (stroke-style SVG strings). We'll map keywords to these. */
+const ICONS = {
+  tree: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2c-2 3-6 3-6 7 0 2 2 4 6 4s6-2 6-4c0-4-4-4-6-7z"/><path d="M6 18v2h12v-2" stroke-linecap="round"/></svg>`,
+  light: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2v6"/><path d="M8 12h8"/><rect x="9" y="14" width="6" height="6" rx="1"/></svg>`,
+  sign: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 2h8l6 6-6 6H6z"/><path d="M12 20v2"/></svg>`,
+  hydrant:`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v4"/><path d="M7 8h10"/><rect x="8" y="11" width="8" height="6" rx="1"/><path d="M10 19v2h4v-2"/></svg>`,
+  fence:`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5v14M8 5v14M12 5v14M16 5v14M20 5v14"/></svg>`,
+  building:`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M8 8h.01M12 8h.01M16 8h.01M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg>`,
+  generic:`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2v6"/><path d="M5 22h14"/><circle cx="12" cy="14" r="6"/></svg>`
+};
+
+/* Map keywords (lowercase) to icons */
+const ICON_KEYWORDS = [
+  {keywords:["tree","trees","vegetation","plant","tree_grp"], icon: "tree"},
+  {keywords:["pole","light","light_pole","lamp","streetlight","lampost","lamp_post"], icon: "light"},
+  {keywords:["sign","signpost","traffic","traffic_sign","signs"], icon: "sign"},
+  {keywords:["hydrant"], icon: "hydrant"},
+  {keywords:["fence","wall","boundary"], icon: "fence"},
+  {keywords:["building","bldg","structure"], icon: "building"}
+];
+
+/* util: format raw Layer value into Title Case human-readable */
+function formatLabel(raw){
+  if(raw === null || raw === undefined) return "NULL";
+  let s = String(raw).trim();
+  if(!s) return "NULL";
+  // ignore numeric "0" or "zero"
+  if(/^0$|^zero$/i.test(s)) return null;
+  // replace underscores/hyphens with space, lowercase then title-case
+  s = s.replace(/[_\-]+/g," ").toLowerCase();
+  // collapse multiple spaces
+  s = s.replace(/\s+/g," ").trim();
+  // title case
+  return s.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+/* choose icon name by matching keywords */
+function chooseIcon(raw){
+  if(raw === null || raw === undefined) return ICONS.generic;
+  const s = String(raw).toLowerCase();
+  for(const m of ICON_KEYWORDS){
+    for(const kw of m.keywords){
+      if(s.indexOf(kw) !== -1) return ICONS[m.icon] || ICONS.generic;
+    }
+  }
+  return ICONS.generic;
+}
+
+/* ================================= ArcGIS + Chart flow ================================= */
 require([
   "esri/Map","esri/views/MapView","esri/layers/FeatureLayer","esri/geometry/geometryEngine"
 ], function(Map, MapView, FeatureLayer, geometryEngine){
 
-  // create map & view
   const map = new Map({ basemap: "dark-gray-vector" });
   const view = new MapView({
     container: "viewDiv",
@@ -148,76 +250,78 @@ require([
     zoom: 15
   });
 
-  // move native UI
+  // ensure native controls don't sit under the header
   view.ui.move(["navigation-toggle","zoom"], "bottom-left");
 
-  // feature layers
+  // create layers
   const pointsFL = new FeatureLayer({ url: POINT_LAYER_URL, outFields: ["*"], popupEnabled: true });
   const polysFL  = new FeatureLayer({ url: POLY_LAYER_URL, outFields: ["*"], popupEnabled: true });
-
   map.addMany([polysFL, pointsFL]);
 
   // DOM refs
   const statusEl = document.getElementById("status");
   const loader = document.getElementById("loader");
-  const cardTotalPoints = document.getElementById("card-total-points");
-  const cardTotalPolygons = document.getElementById("card-total-polygons");
-  const cardTypes = document.getElementById("card-types");
+  const cardPoints = document.getElementById("card-points");
+  const cardPolys  = document.getElementById("card-polys");
+  const cardTypes  = document.getElementById("card-types");
+  const detectedList = document.getElementById("detectedList");
+  const helpBtn = document.getElementById("helpBtn");
+  const helpPanel = document.getElementById("helpPanel");
+  const helpClose = document.getElementById("helpClose");
+
   let barChart = null, donutChart = null;
 
-  function status(txt){ statusEl.textContent = "Status: " + txt; console.debug("Dashboard:", txt); }
-  function fmtNum(v){ return (v === null || v === undefined) ? "N/A" : Number(v).toLocaleString(); }
-  function sqmToSqft(v){ return v * 10.76391041671; }
+  function status(t){ statusEl.textContent = "Status: " + t; console.debug("GD:", t); }
+  function fmt(v){ return (v===null||v===undefined) ? "N/A" : Number(v).toLocaleString(); }
+  function sqmToSqft(v){ return Number(v) * 10.76391041671; }
 
-  // get unique counts for a field with server-side grouping fallback
-  async function getUniqueCounts(layer, field){
-    // prefer server-side group
+  // robust unique-values + counts retrieval
+  async function getCountsForField(layer, field){
+    // prefer server group by
     try{
-      const query = layer.createQuery();
-      query.where = "1=1";
-      query.outFields = [field];
-      query.groupByFieldsForStatistics = [field];
-      const res = await layer.queryFeatures(query);
-      if(res && res.features && res.features.length){
-        // find the numeric stat attribute (could be COUNT or similar)
+      const q = layer.createQuery();
+      q.where = "1=1";
+      q.outFields = [field];
+      q.groupByFieldsForStatistics = [field];
+      const r = await layer.queryFeatures(q);
+      if(r && r.features && r.features.length){
         const counts = {};
-        res.features.forEach(f=>{
-          const attrs = f.attributes;
-          const key = (attrs[field] !== null && attrs[field] !== undefined) ? String(attrs[field]) : "NULL";
-          // search numeric attribute
-          const numAttr = Object.keys(attrs).find(k => /count|COUNT|COUNT_/i.test(k)) || Object.keys(attrs).find(k => typeof attrs[k] === "number" && k !== field);
-          const cnt = numAttr ? Number(attrs[numAttr]) : 1;
+        r.features.forEach(f=>{
+          const a = f.attributes;
+          const key = (a[field] !== null && a[field] !== undefined) ? String(a[field]) : "NULL";
+          const numAttr = Object.keys(a).find(k => /count/i.test(k)) || Object.keys(a).find(k => (typeof a[k] === "number" && k !== field));
+          const cnt = numAttr ? Number(a[numAttr]) : 1;
           counts[key] = (counts[key] || 0) + (isNaN(cnt) ? 1 : cnt);
         });
-        // if counts all ones then fallback to client count (safer)
-        const allOnes = Object.values(counts).every(v=>v===1);
-        if(allOnes){
-          // fallback to client-side scan
-          const q = layer.createQuery(); q.where="1=1"; q.outFields=[field]; q.returnGeometry=false;
-          const r2 = await layer.queryFeatures(q);
-          const c2 = {};
-          (r2.features||[]).forEach(f=>{ const v=(f.attributes[field]||"NULL"); c2[String(v)] = (c2[String(v)]||0)+1; });
-          return c2;
+        // if all ones -> fallback to client scan
+        if(Object.values(counts).every(v=>v===1)){
+          // client fallback
+          return await getCountsClientSide(layer, field);
         }
         return counts;
       }
     }catch(e){
-      console.warn("groupBy failed:", e);
+      console.warn("groupBy failed", e);
     }
+    return await getCountsClientSide(layer, field);
+  }
 
-    // fallback: request all features (no geometry) and count client-side
-    const q = layer.createQuery(); q.where="1=1"; q.outFields=[field]; q.returnGeometry=false;
-    const res2 = await layer.queryFeatures(q);
+  async function getCountsClientSide(layer, field){
+    const q = layer.createQuery();
+    q.where = "1=1";
+    q.outFields = [field];
+    q.returnGeometry = false;
+    const r = await layer.queryFeatures(q);
     const counts = {};
-    (res2.features||[]).forEach(f=>{
+    (r.features||[]).forEach(f=>{
       const v = (f.attributes[field] !== null && f.attributes[field] !== undefined) ? String(f.attributes[field]) : "NULL";
       counts[v] = (counts[v] || 0) + 1;
     });
     return counts;
   }
 
-  // compute area sums per category for polygon layer (geodesic)
-  async function getAreaSums(polyLayer, field){
+  // compute area sums per category for polygon layer
+  async function computeAreaSums(polyLayer, field){
     try{
       const q = polyLayer.createQuery();
       q.where = "1=1";
@@ -227,32 +331,30 @@ require([
       const sums = {};
       (res.features||[]).forEach(f=>{
         const k = (f.attributes[field] !== null && f.attributes[field] !== undefined) ? String(f.attributes[field]) : "NULL";
-        let a = 0;
-        try{ a = geometryEngine.geodesicArea(f.geometry, "square-meters") || 0; } catch(e){ a = 0; }
-        sums[k] = (sums[k] || 0) + a;
+        let area = 0;
+        try{ area = geometryEngine.geodesicArea(f.geometry, "square-meters") || 0; } catch(e){ area = 0; }
+        sums[k] = (sums[k] || 0) + area;
       });
       return sums;
-    }catch(err){
-      console.warn("area sums error:", err);
+    }catch(e){
+      console.warn("area compute failed", e);
       return null;
     }
   }
 
-  // Chart helpers
-  function colorForIndex(i){ const h=(i*47)%360; return `hsl(${h} 78% 55%)`; }
-
-  function createBarChart(labels, data){
+  // chart creation + click handlers
+  function createBar(labels, data){
     const ctx = document.getElementById("barChart").getContext("2d");
     if(barChart) barChart.destroy();
     barChart = new Chart(ctx, {
       type: "bar",
-      data: { labels, datasets: [{ label:"Count", data, backgroundColor: labels.map((_,i)=>colorForIndex(i)) }] },
+      data: { labels, datasets: [{label:"Count", data, backgroundColor: labels.map((_,i)=>`hsl(${(i*47)%360} 78% 55%)`)}] },
       options: {
         responsive:true,
         plugins:{legend:{display:false}},
-        onClick: (evt, items) => {
-          if(!items.length){ clearFilter(); return; }
-          const idx = items[0].index;
+        onClick: (evt, elems) => {
+          if(!elems.length){ clearFilter(); return; }
+          const idx = elems[0].index;
           const val = labels[idx];
           applyFilter(val);
         },
@@ -261,18 +363,18 @@ require([
     });
   }
 
-  function createDonutChart(labels, data){
+  function createDonut(labels, data){
     const ctx = document.getElementById("donutChart").getContext("2d");
     if(donutChart) donutChart.destroy();
     donutChart = new Chart(ctx, {
       type: "doughnut",
-      data: { labels, datasets: [{ data, backgroundColor: labels.map((_,i)=>colorForIndex(i+8)) }] },
+      data: { labels, datasets: [{ data, backgroundColor: labels.map((_,i)=>`hsl(${(i*53+60)%360} 72% 55%)`) }] },
       options: {
         responsive:true,
         plugins:{legend:{position:"bottom"}},
-        onClick: (evt, items) => {
-          if(!items.length){ clearFilter(); return; }
-          const idx = items[0].index;
+        onClick: (evt, elems) => {
+          if(!elems.length){ clearFilter(); return; }
+          const idx = elems[0].index;
           const val = labels[idx];
           applyFilter(val);
         }
@@ -280,13 +382,13 @@ require([
     });
   }
 
-  // map filter: set definitionExpression on both layers
-  function applyFilter(value){
-    status("Filtering map to: " + value);
-    const safe = (value === "NULL") ? "NULL" : value.replace(/'/g,"''");
-    const expr = (value === "NULL") ? `"Layer" IS NULL` : `"Layer" = '${safe}'`;
+  // filter application on both layers
+  function applyFilter(rawValue){
+    status("Filtering map to: " + rawValue);
+    const safe = (rawValue === "NULL") ? "NULL" : rawValue.replace(/'/g,"''");
+    const expr = (rawValue === "NULL") ? `"${LAYER_FIELD}" IS NULL` : `"${LAYER_FIELD}" = '${safe}'`;
     pointsFL.definitionExpression = expr;
-    polysFL.definitionExpression  = expr;
+    polysFL.definitionExpression = expr;
   }
   function clearFilter(){
     status("Clearing map filter");
@@ -294,85 +396,122 @@ require([
     polysFL.definitionExpression = null;
   }
 
-  // Build the dashboard after layers & view ready
-  async function build(){
+  // render detected list with icons; clicking chips filters map
+  function renderDetectedList(countsObj){
+    detectedList.innerHTML = "";
+    const entries = Object.entries(countsObj).filter(([k]) => {
+      if(k === null || k === undefined) return false;
+      if(/^0$|^zero$/i.test(String(k).trim())) return false;
+      return true;
+    });
+    entries.sort((a,b)=> b[1]-a[1]);
+    entries.forEach(([raw, cnt])=>{
+      const label = formatLabel(raw);
+      const iconSVG = chooseIcon(raw);
+      const chip = document.createElement("button");
+      chip.className = "typeChip";
+      chip.title = `${label} — ${cnt.toLocaleString()}`;
+      chip.style.cursor = "pointer";
+      chip.innerHTML = `<span class="typeIcon" aria-hidden>${iconSVG}</span><span>${label}</span><span style="margin-left:8px;color:var(--muted);font-size:0.86rem">(${cnt.toLocaleString()})</span>`;
+      chip.addEventListener("click", ()=> applyFilter(raw));
+      detectedList.appendChild(chip);
+    });
+  }
+
+  // build full dashboard
+  async function buildDashboard(){
     try{
-      status("Waiting for view and layers to load...");
+      status("Waiting for view and layers...");
       await view.when();
       await pointsFL.when();
       await polysFL.when();
 
-      status("Querying counts for Points (field: Layer)...");
-      const pointCounts = await getUniqueCounts(pointsFL, "Layer");
-      const totalPoints = Object.values(pointCounts).reduce((s,v)=>s+v,0);
+      status("Querying point types (Layer)...");
+      let pointCounts = await getCountsForField(pointsFL, LAYER_FIELD);
+      // remove 'zero' and null keys
+      delete pointCounts["0"];
+      delete pointCounts["zero"];
+      delete pointCounts[null];
+      delete pointCounts[undefined];
 
-      status("Querying polygons count...");
-      const totalPolygons = await polysFL.queryFeatureCount();
+      const totalPoints = Object.values(pointCounts).reduce((s,v)=>s+v, 0);
+      cardPoints.textContent = fmt(totalPoints);
 
-      status("Computing polygon areas by Layer...");
-      const areaSums = await getAreaSums(polysFL, "Layer"); // sqm
+      status("Counting polygons...");
+      const totalPolys = await polysFL.queryFeatureCount();
+      cardPolys.textContent = fmt(totalPolys);
 
-      // Update cards
-      cardTotalPoints.textContent = fmtNum(totalPoints);
-      cardTotalPolygons.textContent = fmtNum(totalPolygons);
-      cardTypes.textContent = fmtNum(Object.keys(pointCounts).length);
+      // show detected list
+      renderDetectedList(pointCounts);
+      cardTypes.textContent = fmt(Object.keys(pointCounts).length);
 
-      // Prepare bar chart (points)
-      let entries = Object.entries(pointCounts).map(([k,v])=>({k:v===null?"NULL":k, v}));
-      entries.sort((a,b)=>b.v-a.v);
-      const MAX = 12;
-      if(entries.length > MAX){
-        const top = entries.slice(0,MAX);
-        const other = entries.slice(MAX).reduce((s,o)=>s+o.v,0);
-        top.push({k:"Other", v:other});
-        entries = top;
-      }
-      const labelsPoints = entries.map(e=>e.k);
-      const dataPoints = entries.map(e=>e.v);
-      createBarChart(labelsPoints, dataPoints);
-
-      // Prepare donut chart (areas)
+      status("Computing polygon areas (may take a moment)...");
+      const areaSums = await computeAreaSums(polysFL, LAYER_FIELD); // sqm
+      // prepare donut data
       let areaEntries = [];
       if(areaSums){
-        areaEntries = Object.entries(areaSums).map(([k,v])=>({k:v===null?"NULL":k, v}));
-        areaEntries.sort((a,b)=>b.v-a.v);
-        if(areaEntries.length > MAX){
-          const top = areaEntries.slice(0,MAX);
-          const other = areaEntries.slice(MAX).reduce((s,o)=>s+o.v,0);
-          top.push({k:"Other", v:other});
-          areaEntries = top;
-        }
+        areaEntries = Object.entries(areaSums).filter(([k])=>{
+          if(k===null||k===undefined) return false;
+          if(/^0$|^zero$/i.test(String(k).trim())) return false;
+          return true;
+        }).map(([k,v])=>({k,v}));
+        areaEntries.sort((a,b)=>b.v - a.v);
       } else {
         areaEntries = [{k:"No areas", v:0}];
       }
-      const labelsAreas = areaEntries.map(e=>e.k);
-      const dataAreas = areaEntries.map(e=>Math.round(sqmToSqft(e.v || 0)));
-      createDonutChart(labelsAreas, dataAreas);
+
+      // prepare bar data (points)
+      let ptEntries = Object.entries(pointCounts).map(([k,v])=>({k,v}));
+      ptEntries.sort((a,b)=> b.v - a.v);
+      const MAX = 12;
+      if(ptEntries.length > MAX){
+        const top = ptEntries.slice(0,MAX);
+        const other = ptEntries.slice(MAX).reduce((s,o)=>s+o.v,0);
+        top.push({k:"Other", v:other});
+        ptEntries = top;
+      }
+      const labelsP = ptEntries.map(e=> formatLabel(e.k) || "NULL");
+      const dataP = ptEntries.map(e=> e.v);
+      createBar(labelsP, dataP);
+
+      // donut labels: format label and convert sqm to sqft for display numbers
+      if(areaEntries.length > MAX){
+        const top = areaEntries.slice(0,MAX);
+        const other = areaEntries.slice(MAX).reduce((s,o)=>s+o.v,0);
+        top.push({k:"Other", v:other});
+        areaEntries = top;
+      }
+      const labelsA = areaEntries.map(e => formatLabel(e.k) || "NULL");
+      const dataAraw = areaEntries.map(e => Math.round(sqmToSqft(e.v || 0)));
+      createDonut(labelsA, dataAraw);
 
       // hide loader
       if(loader) loader.style.display = "none";
-      status("Ready. Charts rendered — click items to filter the map.");
+      status("Ready — charts rendered. Click a chart item or type chip to filter the map.");
 
-      // attempt to zoom to combined extent
+      // zoom to combined extent
       try{
         const ext1 = pointsFL.fullExtent;
         const ext2 = polysFL.fullExtent;
         const ext = ext1 ? (ext2 ? ext1.union(ext2) : ext1) : (ext2 || null);
-        if(ext) view.goTo(ext.expand(1.2));
-      }catch(e){ console.warn("goTo extent", e); }
+        if(ext) view.goTo(ext.expand(1.15));
+      }catch(e){ console.warn("zoom ext", e); }
 
-    }catch(e){
-      console.error("build error", e);
-      status("Error: " + (e && e.message ? e.message : String(e)));
+    }catch(err){
+      console.error("dashboard build error", err);
+      status("Error: " + (err && err.message ? err.message : String(err)));
       if(loader) loader.style.display = "none";
     }
   }
 
-  // Start the build flow
-  build();
-
-  // clear filter when clicking background of charts (Chart.js does not easily provide background click; provide double-click on side to clear)
+  // wire help open/close
+  helpBtn.addEventListener("click", ()=> helpPanel.classList.toggle("open"));
+  helpClose.addEventListener("click", ()=> helpPanel.classList.remove("open"));
+  // double-click side to clear filter
   document.querySelector('.side').addEventListener('dblclick', clearFilter);
+
+  // start
+  buildDashboard();
 
 });
 </script>
